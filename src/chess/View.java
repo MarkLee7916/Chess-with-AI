@@ -20,17 +20,13 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 
 public class View {
-	// Allows us to access buttons given a position on the board
 	private final JButton[][] tiles;
-
 	private final JFrame frame;
 	private final JPanel board;
 	private final JPanel playerOptions;
 	private final JTextField gameStatus;
-
-	// Maps images of pieces from their string representation
 	private final Map<String, Image> pieceToImage;
-
+	
 	private Position startOfMove, endOfMove;
 
 	public View() {
