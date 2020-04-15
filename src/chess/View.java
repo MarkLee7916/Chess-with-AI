@@ -24,7 +24,7 @@ public class View {
 	// Allows us to access a tile given a position on the board
 	private final JButton[][] tiles;
 
-	// Main frame that the program runs on
+	// Main frame that the GUI runs on
 	private final JFrame frame;
 	
 	// Main panel that all tiles on the board are placed on
