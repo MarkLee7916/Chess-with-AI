@@ -10,7 +10,6 @@ public class Board {
 	private final Piece[][] board;
 
 	// Cache is used to save moves in case you want to reverse them.
-	// Note to self, consider stashing all caches in one object
 	private final Stack<Piece> deletedPieceCache;
 	private final Stack<Move> moveCache;
 	private final Stack<Position> pawnToQueenConversionCache;
