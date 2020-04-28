@@ -1,7 +1,8 @@
 package chess;
 
+import java.io.Serializable;
 
-enum Team {
+public enum Team implements Serializable {
 	WHITE, BLACK;
 	public static Team team;
 	

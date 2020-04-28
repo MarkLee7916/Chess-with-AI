@@ -1,12 +1,13 @@
 package chess;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Stack;
 
-public class Board {
+public class Board implements Serializable {
 	private final Piece[][] board;
 
 	// Cache is used to save moves in case you want to reverse them.
@@ -29,11 +30,79 @@ public class Board {
 		addPieces(7, 6, Team.BLACK);
 	}
 
-	public String getPieceString(Position position) {
-		if (pieceAt(position) == null)
-			return " ";
+	public void reverseLastMove() {
+		Move move = moveCache.pop();
+		Position start = move.start();
+		Position end = move.destination();
+
+		board[start.row()][start.column()] = pieceAt(end);
+		board[end.row()][end.column()] = deletedPieceCache.pop();
+
+		checkForReversePawnReplacement();
+	}
+
+	// Returns true if last move was successful, false if unsuccessful
+	public boolean makeMove(Move move) {
+		Position start = move.start();
+		Position end = move.destination();
+		Team team = pieceAt(start).getTeam();
+
+		cacheMove(move, end);
+		movePiece(start, end);
+		checkForPawnReplacement(start, end);
+
+		if (isChecked(team)) {
+			reverseLastMove();
+			return false;
+		}
+
+		return true;
+	}
+
+	private void movePiece(Position start, Position end) {
+		board[end.row()][end.column()] = pieceAt(start);
+		board[start.row()][start.column()] = null;
+	}
+
+	private void cacheMove(Move move, Position end) {
+		deletedPieceCache.push(pieceAt(end));
+		moveCache.push(move);
+	}
+
+	public GameStatus getGameStatus(Team team) {
+		for (Move move : generatePossibleMovesForTeam(team)) {
+			if (makeMove(move)) {
+				reverseLastMove();
+				return GameStatus.INPLAY;
+			}
+		}
+
+		// No moves can be made, game is either in checkmate or stalemate
+		if (isChecked(team))
+			return GameStatus.CHECKMATE;
 		else
-			return pieceAt(position).toString();
+			return GameStatus.STALEMATE;
+	}
+
+	// Returns true if a move doesn't break the rules
+	public boolean isValidMove(Move move, Team team) {
+		if (pieceAt(move.start()) == null)
+			return false;
+
+		if (pieceAt(move.start()).getTeam() != team)
+			return false;
+
+		List<Move> possibleMoves = generatePossibleMovesForPiece(move.start());
+		return possibleMoves.contains(move);
+	}
+
+	public List<Move> generatePossibleMovesForTeam(Team team) {
+		List<Move> ret = new ArrayList<>();
+
+		for (Position pos : getPositionsOfPiecesForTeam(team))
+			ret.addAll(generatePossibleMovesForPiece(pos));
+
+		return ret;
 	}
 
 	// Adds piece objects to board for each team
@@ -64,30 +133,6 @@ public class Board {
 		return false;
 	}
 
-	// Returns true if last move was successful, false if unsuccessful
-	public boolean makeMove(Move move) {
-		Position start = move.getStart();
-		Position end = move.getDestination();
-
-		Team team = pieceAt(start).getTeam();
-
-		// Move start piece to end position and cache the piece that was replaced
-		deletedPieceCache.push(pieceAt(end));
-		moveCache.push(move);
-
-		board[end.row()][end.column()] = pieceAt(start);
-		board[start.row()][start.column()] = null;
-
-		checkForPawnReplacement(start, end);
-
-		if (isChecked(team)) {
-			reverseLastMove();
-			return false;
-		}
-
-		return true;
-	}
-
 	// If pawn reached the end, replace with queen
 	private void checkForPawnReplacement(Position start, Position end) {
 		if (pieceAt(end) instanceof Pawn && (end.row() == 0 || end.row() == 7)) {
@@ -101,56 +146,11 @@ public class Board {
 		board[end.row()][end.column()] = new Queen(pieceAt(end).getTeam());
 	}
 
-	public void reverseLastMove() {
-		Move move = moveCache.pop();
-		Position start = move.getStart();
-		Position end = move.getDestination();
-
-		board[start.row()][start.column()] = pieceAt(end);
-		board[end.row()][end.column()] = deletedPieceCache.pop();
-
-		checkForReversePawnReplacement();
-	}
-	
-	public GameStatus getGameStatus(Team team) {
-		for (Move move : generatePossibleMovesForTeam(team)) {
-			if (makeMove(move)) {
-				reverseLastMove();
-				return GameStatus.INPLAY;				
-			}			
-		}				
-
-		if (isChecked(team))
-			return GameStatus.CHECKMATE;
-		else
-			return GameStatus.STALEMATE;		
-	}
-
 	// Uses cache to reverse a move where a pawn has turned into a queen
 	private void checkForReversePawnReplacement() {
 		Position pos = pawnToQueenConversionCache.pop();
 		if (pos != null)
 			board[pos.row()][pos.column()] = new Pawn(pieceAt(pos).getTeam());
-	}
-
-	public boolean isValidMove(Move move, Team team) {	
-		if (pieceAt(move.getStart()) == null)
-			return false;
-		
-		if (pieceAt(move.getStart()).getTeam() != team)
-			return false;
-
-		List<Move> possibleMoves = generatePossibleMovesForPiece(move.getStart());
-		return possibleMoves.contains(move);
-	}
-
-	public List<Move> generatePossibleMovesForTeam(Team team) {
-		List<Move> ret = new ArrayList<>();
-
-		for (Position pos : getPositionsOfPiecesForTeam(team))
-			ret.addAll(generatePossibleMovesForPiece(pos));
-
-		return ret;
 	}
 
 	private List<Move> generatePossibleMovesForPiece(Position start) {
@@ -164,34 +164,42 @@ public class Board {
 
 	// Tells a pawn object where its surrounding pieces are so it can make a move
 	private void updatePawnSurroundings(Position pawnPosition) {
-		int directionModifier;
-		boolean leftTake = false;
-		boolean rightTake = false;
-		boolean isPieceInFront = false;
-		boolean isPieceTwoInFront = false;
+		boolean leftTake = false, rightTake = false;
+		boolean isPieceInFront = false, isPieceTwoInFront = false;
+
 		Pawn pawn = (Pawn) pieceAt(pawnPosition);
+		int directionModifier = getDirectionModifier(pawn.getTeam());
 		Position pos;
 
-		if (pawn.getTeam() == Team.WHITE)
-			directionModifier = 1;
-		else
-			directionModifier = -1;
-
+		// True if an opposing teams piece is at top left of pawn
 		pos = new Position(pawnPosition.row() + directionModifier, pawnPosition.column() + 1);
 		if (pieceAt(pos) != null && pieceAt(pos).getTeam() != pawn.getTeam())
 			rightTake = true;
 
+		// True if an opposing teams piece is at top right of pawn
 		pos = new Position(pawnPosition.row() + directionModifier, pawnPosition.column() - 1);
 		if (pieceAt(pos) != null && pieceAt(pos).getTeam() != pawn.getTeam())
 			leftTake = true;
 
-		if (pieceAt(pawnPosition.row() + directionModifier, pawnPosition.column()) != null)
+		// True if a piece is in front of the pawn
+		pos = new Position(pawnPosition.row() + directionModifier, pawnPosition.column());
+		if (pieceAt(pos) != null)
 			isPieceInFront = true;
 
-		if (pieceAt(pawnPosition.row() + (directionModifier * 2), pawnPosition.column()) != null)
+		// True if no piece lies 2 spots ahead of pawn
+		pos = new Position(pawnPosition.row() + (directionModifier * 2), pawnPosition.column());
+		if (pieceAt(pos) != null)
 			isPieceTwoInFront = true;
 
 		pawn.setSurroundingPositions(leftTake, rightTake, isPieceInFront, isPieceTwoInFront);
+	}
+
+	// Returns the direction where a pawn should move given the team it's in
+	private int getDirectionModifier(Team team) {
+		if (team == Team.WHITE)
+			return 1;
+		else
+			return -1;
 	}
 
 	// Filters out any moves that don't follow the rules of the game
@@ -245,8 +253,8 @@ public class Board {
 
 	// Returns true if the destination isn't occupied by a pieces own team
 	private boolean isValidDestination(Move move) {
-		Position start = move.getStart();
-		Position end = move.getDestination();
+		Position start = move.start();
+		Position end = move.destination();
 		Team team = pieceAt(start).getTeam();
 
 		if (pieceAt(end) != null && pieceAt(end).getTeam() == team)
@@ -255,18 +263,11 @@ public class Board {
 		return true;
 	}
 
-	private Piece pieceAt(Position position) {
+	public Piece pieceAt(Position position) {
 		if (!position.isOnBoard())
 			return null;
 
 		return board[position.row()][position.column()];
-	}
-
-	private Piece pieceAt(int row, int column) {
-		if (row < 0 || row > 7 || column < 0 || column > 7)
-			return null;
-
-		return board[row][column];
 	}
 
 	@SuppressWarnings("unused")
@@ -289,10 +290,10 @@ public class Board {
 	}
 
 	private void buildHeuristicMapping() {
-		heuristicMap.put("k", 900);
-		heuristicMap.put("q", 90);
-		heuristicMap.put("r", 50);
-		heuristicMap.put("b", 30);
+		heuristicMap.put("k", 950);
+		heuristicMap.put("q", 100);
+		heuristicMap.put("r", 60);
+		heuristicMap.put("b", 40);
 		heuristicMap.put("n", 30);
 		heuristicMap.put("p", 10);
 	}
@@ -304,7 +305,7 @@ public class Board {
 			for (Piece piece : row)
 				if (piece != null) {
 					if (team == piece.getTeam())
-						value += heuristicMap.get(piece.toString().toLowerCase()) * 1.3;
+						value += heuristicMap.get(piece.toString().toLowerCase());
 					else
 						value -= heuristicMap.get(piece.toString().toLowerCase());
 				}

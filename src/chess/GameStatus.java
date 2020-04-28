@@ -1,7 +1,7 @@
 package chess;
 
 
-enum GameStatus {
+public enum GameStatus {
 	CHECKMATE, STALEMATE, INPLAY;
 	public static GameStatus gameStatus;
 	

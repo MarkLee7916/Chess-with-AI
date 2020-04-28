@@ -1,9 +1,10 @@
 package chess;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Move {
+public class Move implements Serializable {
 	private final Position start;
 	private final Position end;
 
@@ -58,11 +59,11 @@ public class Move {
 			return 0;
 	}
 
-	public Position getDestination() {
+	public Position destination() {
 		return end;
 	}
 
-	public Position getStart() {
+	public Position start() {
 		return start;
 	}
 

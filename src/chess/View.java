@@ -10,72 +10,135 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Observable;
 
 import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import javax.swing.filechooser.FileSystemView;
 
-public class View {
-	
+public class View extends Observable {
 	// Allows us to access a tile given a position on the board
 	private final JButton[][] tiles;
 
 	// Main frame that the GUI runs on
 	private final JFrame frame;
-	
+
 	// Main panel that all tiles on the board are placed on
 	private final JPanel board;
-	
+
 	// Panel that holds any buttons the player needs
 	private final JPanel playerOptions;
-	
+
 	// Maps string representation of a piece to its image
 	private final Map<String, Image> pieceToImage;
-	
+
+	// Displays any information on the game (i.e checks, illegal moves)
 	private final JTextField gameStatus;
-	
-	private Position startOfMove, endOfMove;
+
+	// These components represent the filemenu dropdown menu for saving and loading
+	private final JMenuBar fileMenuBar;
+	private final JMenu fileMenu;
+	private final JMenuItem save;
+	private final JMenuItem load;
+
+	// Allows view to tell the controller any requests that come from the player
+	private UpdateType updateType;
 
 	public View() {
 		frame = new JFrame("Chess");
-		frame.setSize(1000, 1000);
-
 		board = new JPanel(new GridLayout(0, 8));
+
+		fileMenuBar = new JMenuBar();
+		fileMenu = new JMenu("File");
+		save = new JMenuItem("Save");
+		load = new JMenuItem("Load");
+		setUpFileMenu();
+
 		playerOptions = new JPanel();
+		setupPlayerOptions();
 
 		gameStatus = new JTextField("");
 		gameStatus.setHorizontalAlignment(JTextField.CENTER);
 
 		tiles = new JButton[8][8];
-		pieceToImage = new HashMap<>();
-
-		// Add components to JFrame
-		frame.getContentPane().add(BorderLayout.CENTER, board);
-		frame.getContentPane().add(BorderLayout.SOUTH, playerOptions);
-		frame.getContentPane().add(BorderLayout.NORTH, gameStatus);
-
-		setupPlayerOptions();
-		addPieceImagesToMap();
-		setUpButtons();
-		initialiseWhitePieceImages();
-		initialiseBlackPieceImages();
+		setupBoardButtons();
 		addBoardBehaviour();
 
+		pieceToImage = new HashMap<>();
+		addPieceImagesToMap();
+
+		addComponentsToFrame();
+		configureFrame();
+	}
+
+	private void configureFrame() {
+		frame.setSize(1000, 1000);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frame.setVisible(true);
 	}
 
-	private void setupPlayerOptions() {
-		JButton button = new JButton("Reset Move");
-		playerOptions.add(button);
+	private void setUpFileMenu() {
+		fileMenu.add(save);
+		fileMenu.add(load);
+		fileMenuBar.add(fileMenu);
 
-		button.addActionListener(actionEvent -> {
-			resetMove();
+		addSaveBehaviour();
+		addLoadBehaviour();
+	}
+
+	// Tells program what to do when save button is pressed
+	private void addSaveBehaviour() {
+		save.addActionListener(actionEvent -> {
+			File file = getFileFromUser();
+
+			if (file != null) {
+				updateType = UpdateType.SAVE;
+				setChanged();
+				notifyObservers(file);
+				updateType = UpdateType.NONE;
+			}
 		});
+	}
+
+	// Tells program what to do when load button is pressed
+	private void addLoadBehaviour() {
+		load.addActionListener(actionEvent -> {
+			File file = getFileFromUser();
+
+			if (file != null) {
+				updateType = UpdateType.LOAD;
+				setChanged();
+				notifyObservers(file);
+				updateType = UpdateType.NONE;
+			}
+		});
+	}
+
+	public void fileIOError() {
+		JOptionPane.showMessageDialog(null, "Error when loading in file");
+	}
+
+	// Allows user to select a file from their computer's file menu
+	private File getFileFromUser() {
+		JFileChooser jfc = new JFileChooser(FileSystemView.getFileSystemView().getHomeDirectory());
+
+		if (jfc.showOpenDialog(null) == JFileChooser.APPROVE_OPTION)
+			return jfc.getSelectedFile();
+
+		return null;
+	}
+
+	public UpdateType getUpdateType() {
+		return updateType;
 	}
 
 	public void gameOverMessage(GameStatus status, Team team) {
@@ -83,6 +146,38 @@ public class View {
 			JOptionPane.showMessageDialog(null, "Game has ended in a stalemate");
 		else
 			JOptionPane.showMessageDialog(null, "Checkmate, " + Team.toString(Team.otherTeam(team)) + " has won");
+	}
+
+	// Updates the images displayed on the board for a move
+	public void updateTile(Position position, String update) {
+		tiles[position.row()][position.column()].setIcon(new ImageIcon(pieceToImage.get(update)));
+	}
+
+	// Remove image from a tile
+	public void clearTile(Position position) {
+		tiles[position.row()][position.column()].setIcon(null);
+	}
+
+	public void invalidMoveMessage(Move move) {
+		gameStatus.setText("Attempted move " + move + " is invalid");
+	}
+
+	public void moveMessage(Move move) {
+		gameStatus.setText(move.toString());
+	}
+
+	public void checkMessage(Team team) {
+		gameStatus.setText(Team.toString(team) + " would be checked as the result of that move");
+	}
+
+	private void addComponentsToFrame() {
+		frame.getContentPane().add(BorderLayout.CENTER, board);
+		frame.getContentPane().add(BorderLayout.SOUTH, playerOptions);
+		frame.getContentPane().add(BorderLayout.NORTH, gameStatus);
+	}
+
+	private void setupPlayerOptions() {
+		playerOptions.add(fileMenuBar);
 	}
 
 	// Adds the actionlistener to every button in the board
@@ -95,45 +190,15 @@ public class View {
 	// Allows user to select pieces for a move
 	private void addButtonBehaviour(final int row, final int column) {
 		tiles[row][column].addActionListener(actionEvent -> {
-			if (startOfMove == null)
-				startOfMove = new Position(row, column);
-			else
-				endOfMove = new Position(row, column);
+			updateType = UpdateType.MOVE;
+			setChanged();
+			notifyObservers(new Position(row, column));
+			updateType = UpdateType.NONE;
 		});
 	}
 
-	// Adds images of white pieces to the board at the start of the game
-	private void initialiseWhitePieceImages() {
-		tiles[0][0].setIcon(new ImageIcon(pieceToImage.get("R")));
-		tiles[0][1].setIcon(new ImageIcon(pieceToImage.get("N")));
-		tiles[0][2].setIcon(new ImageIcon(pieceToImage.get("B")));
-		tiles[0][3].setIcon(new ImageIcon(pieceToImage.get("Q")));
-		tiles[0][4].setIcon(new ImageIcon(pieceToImage.get("K")));
-		tiles[0][5].setIcon(new ImageIcon(pieceToImage.get("B")));
-		tiles[0][6].setIcon(new ImageIcon(pieceToImage.get("N")));
-		tiles[0][7].setIcon(new ImageIcon(pieceToImage.get("R")));
-
-		for (int i = 0; i < 8; i++)
-			tiles[1][i].setIcon(new ImageIcon(pieceToImage.get("P")));
-	}
-
-	// Adds images of black pieces to the board at the start of the game
-	private void initialiseBlackPieceImages() {
-		tiles[7][0].setIcon(new ImageIcon(pieceToImage.get("r")));
-		tiles[7][1].setIcon(new ImageIcon(pieceToImage.get("n")));
-		tiles[7][2].setIcon(new ImageIcon(pieceToImage.get("b")));
-		tiles[7][3].setIcon(new ImageIcon(pieceToImage.get("q")));
-		tiles[7][4].setIcon(new ImageIcon(pieceToImage.get("k")));
-		tiles[7][5].setIcon(new ImageIcon(pieceToImage.get("b")));
-		tiles[7][6].setIcon(new ImageIcon(pieceToImage.get("n")));
-		tiles[7][7].setIcon(new ImageIcon(pieceToImage.get("r")));
-
-		for (int i = 0; i < 8; i++)
-			tiles[6][i].setIcon(new ImageIcon(pieceToImage.get("p")));
-	}
-
 	// Create buttons and add to panel
-	private void setUpButtons() {
+	private void setupBoardButtons() {
 		for (int row = 0; row < 8; row++) {
 			for (int column = 0; column < 8; column++) {
 				JButton button = new JButton();
@@ -170,6 +235,7 @@ public class View {
 		pieceToImage.put("P", pieceImages[1][5]);
 	}
 
+	// Get piece images from file
 	private void readPieceImages(Image[][] pieceImages) {
 		int imageSize = 64;
 
@@ -183,42 +249,5 @@ public class View {
 			System.out.println("Error with handling images");
 			io.printStackTrace();
 		}
-	}
-
-	// Returns players move when they've selected it
-	public Move pickMove() {
-		while (startOfMove == null || endOfMove == null)
-			System.out.print("");
-
-		Move ret = new Move(startOfMove, endOfMove);
-		resetMove();
-
-		return ret;
-	}
-
-	private void resetMove() {
-		startOfMove = null;
-		endOfMove = null;
-	}
-
-	// Updates the images displayed on the board for a move
-	public void updateTile(Position position, String update) {
-		tiles[position.row()][position.column()].setIcon(new ImageIcon(pieceToImage.get(update)));
-	}
-
-	public void clearTile(Position position) {
-		tiles[position.row()][position.column()].setIcon(null);
-	}
-
-	public void invalidMoveMessage(Move move) {
-		gameStatus.setText("Attempted move " + move + " is invalid");
-	}
-
-	public void moveMessage(Move move) {
-		gameStatus.setText(move.toString());
-	}
-
-	public void checkMessage(Team team) {
-		gameStatus.setText(Team.toString(team) + " would be checked as the result of that move");
 	}
 }

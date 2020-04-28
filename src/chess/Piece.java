@@ -1,8 +1,9 @@
 package chess;
 
+import java.io.Serializable;
 import java.util.List;
 
-abstract public class Piece {
+abstract public class Piece implements Serializable { 
 	private final Team team;
 	
 	public Piece(Team t) {
