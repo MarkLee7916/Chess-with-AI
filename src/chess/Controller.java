@@ -13,7 +13,6 @@ public class Controller implements Observer {
 	private Board board;
 	private final View view;
 	private final MinimaxAI ai;
-
 	private Position startOfPlayerMove;
 	private Position endOfPlayerMove;
 	private Team currentTeam;
