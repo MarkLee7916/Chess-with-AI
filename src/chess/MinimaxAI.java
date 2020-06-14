@@ -1,7 +1,7 @@
 package chess;
 
 /*
- * Uses the minimax algorithm with alpha beta pruning and iterative deepening to make moves
+ * Uses the minimax algorithm with alpha beta pruning to make moves
  */
 public class MinimaxAI {
 	private final int maxDepth;
